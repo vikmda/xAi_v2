@@ -7,7 +7,6 @@ const API = `${BACKEND_URL}/api`;
 
 // Компонент для выбора модели
 const ModelSelector = ({ models, selectedModel, onModelChange }) => {
-  // Группируем модели по языку для лучшего отображения
   const russianModels = models.filter(model => model.language === 'ru');
   const englishModels = models.filter(model => model.language === 'en');
 
@@ -47,12 +46,22 @@ const ModelSelector = ({ models, selectedModel, onModelChange }) => {
   );
 };
 
-// Компонент для тестирования
-const TestComponent = ({ selectedModel }) => {
+// Объединенный компонент для тестирования и обучения
+const TestTrainingComponent = ({ selectedModel }) => {
   const [message, setMessage] = useState('');
   const [response, setResponse] = useState('');
   const [rating, setRating] = useState(5);
   const [loading, setLoading] = useState(false);
+  
+  // Для обучения
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [priority, setPriority] = useState(5);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  
+  // Для загрузки файла
+  const [file, setFile] = useState(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
   const handleTest = async () => {
     if (!selectedModel || !message.trim()) return;
@@ -90,143 +99,10 @@ const TestComponent = ({ selectedModel }) => {
     }
   };
 
-  // Примеры сообщений для тестирования
-  const exampleMessages = [
-    "Привет! Как дела?",
-    "Что любишь делать?",
-    "Ты очень красивая",
-    "Хочу познакомиться поближе",
-    "Расскажи о себе"
-  ];
-
-  const handleExampleClick = (exampleMsg) => {
-    setMessage(exampleMsg);
-  };
-
-  return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-        🧪 Тестирование модели
-      </h3>
-      
-      {!selectedModel && (
-        <div className="text-center py-8 text-gray-500">
-          <p className="text-lg">⚠️ Выберите модель для тестирования</p>
-          <p className="text-sm mt-2">Используйте выпадающий список выше</p>
-        </div>
-      )}
-
-      {selectedModel && (
-        <>
-          {/* Примеры сообщений */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              💡 Быстрые примеры:
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {exampleMessages.map((example, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleExampleClick(example)}
-                  className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-full transition-colors"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              💬 Введите сообщение для тестирования:
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Напишите сообщение для персонажа..."
-                className="w-full p-3 pr-12 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                onKeyPress={(e) => e.key === 'Enter' && handleTest()}
-              />
-              <div className="absolute right-3 top-3 text-gray-400">
-                💬
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={handleTest}
-            disabled={!selectedModel || !message.trim() || loading}
-            className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 disabled:bg-gray-400 mb-4 font-medium transition-colors flex items-center gap-2"
-          >
-            {loading ? '🔄 Тестирование...' : '🚀 Протестировать'}
-          </button>
-
-          {response && (
-            <div className="mb-4 p-4 border-2 border-blue-100 rounded-lg bg-blue-50">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                🤖 Ответ персонажа:
-              </label>
-              <div className="p-3 bg-white rounded-lg border-l-4 border-blue-400">
-                <textarea
-                  value={response}
-                  onChange={(e) => setResponse(e.target.value)}
-                  className="w-full p-2 text-gray-800 border border-gray-200 rounded-md resize-none"
-                  rows={3}
-                  placeholder="Ответ персонажа..."
-                />
-              </div>
-              <div className="mt-2 text-xs text-gray-600">
-                💡 Можете отредактировать ответ перед оценкой
-              </div>
-              
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-medium text-gray-700">
-                    ⭐ Оцените качество ответа (1-10):
-                  </label>
-                  <span className="text-lg font-bold text-blue-600">{rating}/10</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={rating}
-                  onChange={(e) => setRating(parseInt(e.target.value))}
-                  className="w-full mb-3"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mb-3">
-                  <span>1 (Очень плохо)</span>
-                  <span>5 (Нормально)</span>
-                  <span>10 (Отлично)</span>
-                </div>
-                <button
-                  onClick={handleRating}
-                  className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-medium transition-colors flex items-center gap-2"
-                >
-                  📊 Сохранить оценку
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// Компонент для ручного обучения
-const TrainingComponent = ({ selectedModel }) => {
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [priority, setPriority] = useState(5);
-  const [loading, setLoading] = useState(false);
-
   const handleTrain = async () => {
     if (!selectedModel || !question.trim() || !answer.trim()) return;
     
-    setLoading(true);
+    setTrainingLoading(true);
     try {
       await axios.post(`${API}/train`, {
         question: question.trim(),
@@ -242,8 +118,49 @@ const TrainingComponent = ({ selectedModel }) => {
       console.error('Ошибка обучения:', error);
       alert('❌ Ошибка при сохранении обучающих данных');
     } finally {
-      setLoading(false);
+      setTrainingLoading(false);
     }
+  };
+
+  const handleFileUpload = async () => {
+    if (!file || !selectedModel) return;
+    
+    setFileLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('model', selectedModel);
+      
+      const response = await axios.post(`${API}/train-file?model=${selectedModel}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      alert(`✅ ${response.data.message}`);
+      setFile(null);
+      // Сбрасываем input
+      const fileInput = document.getElementById('training-file');
+      if (fileInput) fileInput.value = '';
+    } catch (error) {
+      console.error('Ошибка загрузки файла:', error);
+      alert('❌ Ошибка при загрузке файла');
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  // Примеры сообщений для тестирования
+  const exampleMessages = [
+    "Привет! Как дела?",
+    "Что любишь делать?",
+    "Ты очень красивая",
+    "Хочу познакомиться поближе",
+    "Расскажи о себе"
+  ];
+
+  const handleExampleClick = (exampleMsg) => {
+    setMessage(exampleMsg);
   };
 
   // Примеры для обучения
@@ -262,7 +179,7 @@ const TrainingComponent = ({ selectedModel }) => {
     }
   ];
 
-  const handleExampleClick = (example) => {
+  const handleTrainingExampleClick = (example) => {
     setQuestion(example.question);
     setAnswer(example.answer);
   };
@@ -275,115 +192,241 @@ const TrainingComponent = ({ selectedModel }) => {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
-        🎓 Ручное обучение модели
-      </h3>
-      
+    <div className="space-y-6">
       {!selectedModel && (
-        <div className="text-center py-8 text-gray-500">
-          <p className="text-lg">⚠️ Выберите модель для обучения</p>
-          <p className="text-sm mt-2">Обучение поможет улучшить ответы персонажа</p>
+        <div className="text-center py-8 text-gray-500 bg-white p-6 rounded-lg shadow-md">
+          <p className="text-lg">⚠️ Выберите модель для работы</p>
+          <p className="text-sm mt-2">Используйте выпадающий список выше</p>
         </div>
       )}
 
       {selectedModel && (
         <>
-          {/* Примеры для обучения */}
-          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <h4 className="font-medium text-blue-800 mb-3">💡 Примеры обучения:</h4>
-            <div className="space-y-2">
-              {trainingExamples.map((example, index) => (
-                <div
-                  key={index}
-                  onClick={() => handleExampleClick(example)}
-                  className="p-3 bg-white border border-blue-100 rounded-lg cursor-pointer hover:border-blue-300 transition-colors"
-                >
-                  <div className="text-sm text-gray-600">
-                    <strong>Вопрос:</strong> {example.question}
-                  </div>
-                  <div className="text-sm text-blue-700 mt-1">
-                    <strong>Ответ:</strong> {example.answer}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
+          {/* Секция тестирования */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+              🧪 Тестирование модели
+            </h3>
+            
+            {/* Примеры сообщений */}
+            <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                ❓ Вопрос/Сообщение пользователя:
+                💡 Быстрые примеры:
               </label>
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Например: Привет, как дела?"
-                rows={3}
-                className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                💬 Правильный ответ персонажа:
-              </label>
-              <textarea
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder="Например: Привет красавчик! У меня все отлично 😘"
-                rows={3}
-                className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              ⚡ Приоритет обучения: {getPriorityLabel(priority)}
-            </label>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-500">1</span>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={priority}
-                onChange={(e) => setPriority(parseInt(e.target.value))}
-                className="flex-1"
-              />
-              <span className="text-sm text-gray-500">10</span>
-              <span className="text-lg font-bold text-blue-600 min-w-[2rem] text-center">
-                {priority}
-              </span>
-            </div>
-            <div className="mt-2 text-xs text-gray-500">
-              Высокий приоритет означает, что этот ответ будет использоваться чаще
-            </div>
-          </div>
-
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <span className="text-yellow-600 mt-0.5">💡</span>
-              <div className="text-sm text-yellow-800">
-                <strong>Советы по обучению:</strong>
-                <ul className="mt-1 space-y-1">
-                  <li>• Используйте естественный язык и эмодзи</li>
-                  <li>• Добавляйте флиртовые элементы для персонажа</li>
-                  <li>• Высокий приоритет (8-10) для самых важных ответов</li>
-                  <li>• Учитывайте характер и настроение персонажа</li>
-                </ul>
+              <div className="flex flex-wrap gap-2">
+                {exampleMessages.map((example, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleExampleClick(example)}
+                    className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-full transition-colors"
+                  >
+                    {example}
+                  </button>
+                ))}
               </div>
             </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                💬 Введите сообщение для тестирования:
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Напишите сообщение для персонажа..."
+                  className="w-full p-3 pr-12 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onKeyPress={(e) => e.key === 'Enter' && handleTest()}
+                />
+                <div className="absolute right-3 top-3 text-gray-400">
+                  💬
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleTest}
+              disabled={!selectedModel || !message.trim() || loading}
+              className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 disabled:bg-gray-400 mb-4 font-medium transition-colors flex items-center gap-2"
+            >
+              {loading ? '🔄 Тестирование...' : '🚀 Протестировать'}
+            </button>
+
+            {response && (
+              <div className="mb-4 p-4 border-2 border-blue-100 rounded-lg bg-blue-50">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  🤖 Ответ персонажа:
+                </label>
+                <div className="p-3 bg-white rounded-lg border-l-4 border-blue-400">
+                  <textarea
+                    value={response}
+                    onChange={(e) => setResponse(e.target.value)}
+                    className="w-full p-2 text-gray-800 border border-gray-200 rounded-md resize-none"
+                    rows={3}
+                    placeholder="Ответ персонажа..."
+                  />
+                </div>
+                <div className="mt-2 text-xs text-gray-600">
+                  💡 Можете отредактировать ответ перед оценкой
+                </div>
+                
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-medium text-gray-700">
+                      ⭐ Оцените качество ответа (1-10):
+                    </label>
+                    <span className="text-lg font-bold text-blue-600">{rating}/10</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={rating}
+                    onChange={(e) => setRating(parseInt(e.target.value))}
+                    className="w-full mb-3"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mb-3">
+                    <span>1 (Очень плохо)</span>
+                    <span>5 (Нормально)</span>
+                    <span>10 (Отлично)</span>
+                  </div>
+                  <button
+                    onClick={handleRating}
+                    className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 font-medium transition-colors flex items-center gap-2"
+                  >
+                    📊 Сохранить оценку
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={handleTrain}
-            disabled={!selectedModel || !question.trim() || !answer.trim() || loading}
-            className="mt-6 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-medium disabled:bg-gray-400 transition-colors flex items-center gap-2"
-          >
-            {loading ? '💾 Сохранение...' : '🎓 Обучить модель'}
-          </button>
+          {/* Секция загрузки файла */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+              📁 Загрузка файла обучения
+            </h3>
+            
+            <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-medium text-blue-800 mb-2">📋 Формат файла:</h4>
+              <div className="text-sm text-blue-700 space-y-1">
+                <p>• Каждая строка: <code>вопрос - ответ</code></p>
+                <p>• Разделители: <code> - </code>, <code> | </code> или <code>TAB</code></p>
+                <p>• Пример: <code>Привет - Приветик красавчик! 😘</code></p>
+                <p>• Комментарии начинаются с <code>#</code></p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                📄 Выберите файл с обучающими данными:
+              </label>
+              <input
+                id="training-file"
+                type="file"
+                accept=".txt,.csv"
+                onChange={(e) => setFile(e.target.files[0])}
+                className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <button
+              onClick={handleFileUpload}
+              disabled={!file || !selectedModel || fileLoading}
+              className="bg-purple-500 text-white px-6 py-3 rounded-lg hover:bg-purple-600 disabled:bg-gray-400 font-medium transition-colors flex items-center gap-2"
+            >
+              {fileLoading ? '⏳ Загрузка...' : '📁 Загрузить и обучить'}
+            </button>
+          </div>
+
+          {/* Секция ручного обучения */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2">
+              🎓 Ручное обучение модели
+            </h3>
+            
+            {/* Примеры для обучения */}
+            <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200">
+              <h4 className="font-medium text-green-800 mb-3">💡 Примеры обучения:</h4>
+              <div className="space-y-2">
+                {trainingExamples.map((example, index) => (
+                  <div
+                    key={index}
+                    onClick={() => handleTrainingExampleClick(example)}
+                    className="p-3 bg-white border border-green-100 rounded-lg cursor-pointer hover:border-green-300 transition-colors"
+                  >
+                    <div className="text-sm text-gray-600">
+                      <strong>Вопрос:</strong> {example.question}
+                    </div>
+                    <div className="text-sm text-green-700 mt-1">
+                      <strong>Ответ:</strong> {example.answer}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ❓ Вопрос/Сообщение пользователя:
+                </label>
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Например: Привет, как дела?"
+                  rows={3}
+                  className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  💬 Правильный ответ персонажа:
+                </label>
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  placeholder="Например: Привет красавчик! У меня все отлично 😘"
+                  rows={3}
+                  className="w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                ⚡ Приоритет обучения: {getPriorityLabel(priority)}
+              </label>
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-500">1</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={priority}
+                  onChange={(e) => setPriority(parseInt(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500">10</span>
+                <span className="text-lg font-bold text-blue-600 min-w-[2rem] text-center">
+                  {priority}
+                </span>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                Высокий приоритет означает, что этот ответ будет использоваться чаще
+              </div>
+            </div>
+
+            <button
+              onClick={handleTrain}
+              disabled={!selectedModel || !question.trim() || !answer.trim() || trainingLoading}
+              className="mt-6 bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-medium disabled:bg-gray-400 transition-colors flex items-center gap-2"
+            >
+              {trainingLoading ? '💾 Сохранение...' : '🎓 Обучить модель'}
+            </button>
+          </div>
         </>
       )}
     </div>
@@ -595,15 +638,19 @@ const CharacterEditor = ({ selectedModel }) => {
         </div>
       </div>
 
-      {/* Сообщения */}
+      {/* Сообщения с поддержкой спинтакса */}
       <div className="mt-4">
         <label className="block text-sm font-medium text-gray-700 mb-1">
           💕 Предпоследнее сообщение (с намеком):
         </label>
+        <div className="mb-2 text-xs text-blue-600">
+          💡 Поддерживается спинтакс: {'{хочешь|желаешь|готов}'} увидеть мои фото?
+        </div>
         <textarea
           value={character.semi_message}
           onChange={(e) => setCharacter({...character, semi_message: e.target.value})}
           rows={2}
+          placeholder="Пример: {Хочешь|Желаешь|Готов} увидеть мои фото? 📸"
           className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -612,10 +659,14 @@ const CharacterEditor = ({ selectedModel }) => {
         <label className="block text-sm font-medium text-gray-700 mb-1">
           🔗 Финальное сообщение (с ссылкой на Telegram):
         </label>
+        <div className="mb-2 text-xs text-blue-600">
+          💡 Поддерживается спинтакс: {'{переходи|заходи|жми}'} в мой телеграм
+        </div>
         <textarea
           value={character.final_message}
           onChange={(e) => setCharacter({...character, final_message: e.target.value})}
           rows={2}
+          placeholder="Пример: {Переходи|Заходи|Жми} в мой телеграм @username 😘"
           className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -685,14 +736,17 @@ const CharacterEditor = ({ selectedModel }) => {
     </div>
   );
 };
-// Компонент настроек чат-платформ - УДАЛЕН по запросу пользователя
 
 const StatisticsComponent = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [clearingStats, setClearingStats] = useState(false);
 
   useEffect(() => {
     loadStatistics();
+    // Обновляем статистику каждые 5 секунд для реального времени
+    const interval = setInterval(loadStatistics, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadStatistics = async () => {
@@ -706,32 +760,137 @@ const StatisticsComponent = () => {
     }
   };
 
-  if (loading) return <div>Загрузка статистики...</div>;
-  if (!stats) return <div>Ошибка загрузки статистики</div>;
+  const clearStatistics = async () => {
+    if (!window.confirm('Вы уверены? Это удалит всю статистику, но сохранит словарь обучения.')) {
+      return;
+    }
+    
+    setClearingStats(true);
+    try {
+      await axios.post(`${API}/clear-statistics`);
+      alert('✅ Статистика очищена, словарь обучения сохранен');
+      await loadStatistics();
+    } catch (error) {
+      console.error('Ошибка очистки статистики:', error);
+      alert('❌ Ошибка при очистке статистики');
+    } finally {
+      setClearingStats(false);
+    }
+  };
+
+  if (loading) return <div className="bg-white p-6 rounded-lg shadow-md">Загрузка статистики...</div>;
+  if (!stats) return <div className="bg-white p-6 rounded-lg shadow-md">Ошибка загрузки статистики</div>;
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-lg font-semibold mb-4">Статистика системы</h3>
-      
-      {/* Общая статистика */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h4 className="font-medium text-blue-900">Всего диалогов</h4>
-          <p className="text-2xl font-bold text-blue-600">{stats.total_conversations}</p>
+    <div className="space-y-6">
+      {/* Заголовок с кнопкой очистки */}
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">📊 Статистика системы</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={loadStatistics}
+              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+            >
+              🔄 Обновить
+            </button>
+            <button
+              onClick={clearStatistics}
+              disabled={clearingStats}
+              className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 disabled:bg-gray-400 transition-colors"
+            >
+              {clearingStats ? '⏳ Очистка...' : '🗑️ Очистить статистику'}
+            </button>
+          </div>
         </div>
-        <div className="bg-green-50 p-4 rounded-lg">
-          <h4 className="font-medium text-green-900">Всего пользователей</h4>
-          <p className="text-2xl font-bold text-green-600">{stats.total_users}</p>
-        </div>
-        <div className="bg-purple-50 p-4 rounded-lg">
-          <h4 className="font-medium text-purple-900">Активных моделей</h4>
-          <p className="text-2xl font-bold text-purple-600">{stats.system_status.models_loaded}</p>
+        
+        {/* Общая статистика */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-medium text-blue-900">Всего диалогов</h4>
+            <p className="text-2xl font-bold text-blue-600">{stats.total_conversations}</p>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg">
+            <h4 className="font-medium text-green-900">Всего пользователей</h4>
+            <p className="text-2xl font-bold text-green-600">{stats.total_users}</p>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <h4 className="font-medium text-purple-900">Активных моделей</h4>
+            <p className="text-2xl font-bold text-purple-600">{stats.system_status.models_loaded}</p>
+          </div>
         </div>
       </div>
 
+      {/* Реальная активность бота */}
+      {stats.recent_activities && stats.recent_activities.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h4 className="font-medium mb-4 flex items-center gap-2">
+            🚀 Последняя активность бота
+            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">LIVE</span>
+          </h4>
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {stats.recent_activities.map((activity, index) => (
+              <div key={index} className="p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-mono">
+                      {new Date(activity.timestamp).toLocaleTimeString()}
+                    </span>
+                    <span className="font-semibold text-gray-800">
+                      {activity.action === 'received_message' && '📥 Получено сообщение от пользователя'}
+                      {activity.action === 'used_trained' && '🧠 Найден ответ в словаре обучения'}
+                      {activity.action === 'used_ollama' && '🤖 Запрос к Llama AI'}
+                      {activity.action === 'sent_response' && '📤 Отправлен ответ пользователю'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                    Пользователь: <span className="font-medium">{activity.user_id}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                    Модель: <span className="font-medium">{activity.model}</span>
+                  </span>
+                </div>
+                {activity.details && (
+                  <div className="mt-2 text-sm text-gray-500 bg-white p-2 rounded italic">
+                    "{activity.details}"
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Статистика источников ответов */}
+      {stats.source_stats && stats.source_stats.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h4 className="font-medium mb-4">📈 Источники ответов (24 часа)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {stats.source_stats.map((source, index) => (
+              <div key={index} className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border">
+                <div className="text-2xl font-bold text-blue-600 mb-1">{source.count}</div>
+                <div className="text-sm font-medium text-gray-700">
+                  {source.source}
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${Math.min(100, (source.count / Math.max(...stats.source_stats.map(s => s.count))) * 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Статус системы */}
-      <div className="mb-6">
-        <h4 className="font-medium mb-2">Статус системы</h4>
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h4 className="font-medium mb-2">⚙️ Статус системы</h4>
         <div className="flex items-center gap-4">
           <div className={`flex items-center gap-2 ${stats.system_status.database_connected ? 'text-green-600' : 'text-red-600'}`}>
             <div className={`w-3 h-3 rounded-full ${stats.system_status.database_connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -745,8 +904,8 @@ const StatisticsComponent = () => {
 
       {/* Статистика по моделям */}
       {stats.models_stats && stats.models_stats.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Статистика по моделям</h4>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h4 className="font-medium mb-2">📊 Статистика по моделям</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
@@ -759,7 +918,7 @@ const StatisticsComponent = () => {
               <tbody>
                 {stats.models_stats.map((model, index) => (
                   <tr key={index} className="border-t">
-                    <td className="px-4 py-2">{model._id}</td>
+                    <td className="px-4 py-2">{model.model}</td>
                     <td className="px-4 py-2">{model.conversations}</td>
                     <td className="px-4 py-2">{model.avg_rating ? model.avg_rating.toFixed(1) : 'N/A'}</td>
                   </tr>
@@ -770,40 +929,43 @@ const StatisticsComponent = () => {
         </div>
       )}
 
-      {/* Топ ответов */}
-      {stats.top_responses && stats.top_responses.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Популярные ответы</h4>
-          <div className="space-y-2">
-            {stats.top_responses.slice(0, 5).map((response, index) => (
-              <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-sm truncate">{response._id}</span>
-                <span className="text-sm font-medium">{response.count}</span>
-              </div>
-            ))}
+      {/* Топ ответов и вопросов в одном блоке */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Популярные ответы */}
+        {stats.top_responses && stats.top_responses.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h4 className="font-medium mb-2">🔥 Популярные ответы</h4>
+            <div className="space-y-2">
+              {stats.top_responses.slice(0, 5).map((response, index) => (
+                <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                  <span className="text-sm truncate">{response.response}</span>
+                  <span className="text-sm font-medium">{response.count}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Популярные вопросы */}
-      {stats.top_questions && stats.top_questions.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Популярные вопросы</h4>
-          <div className="space-y-2">
-            {stats.top_questions.slice(0, 5).map((question, index) => (
-              <div key={index} className="flex justify-between items-center p-2 bg-green-50 rounded">
-                <span className="text-sm truncate">{question._id}</span>
-                <span className="text-sm font-medium text-green-600">{question.count}</span>
-              </div>
-            ))}
+        {/* Популярные вопросы */}
+        {stats.top_questions && stats.top_questions.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h4 className="font-medium mb-2">❓ Популярные вопросы</h4>
+            <div className="space-y-2">
+              {stats.top_questions.slice(0, 5).map((question, index) => (
+                <div key={index} className="flex justify-between items-center p-2 bg-green-50 rounded">
+                  <span className="text-sm truncate">{question.question}</span>
+                  <span className="text-sm font-medium text-green-600">{question.count}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Проблемные вопросы */}
       {stats.problem_questions && stats.problem_questions.length > 0 && (
-        <div>
-          <h4 className="font-medium mb-2">Проблемные вопросы (низкий рейтинг)</h4>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h4 className="font-medium mb-2">⚠️ Проблемные вопросы (низкий рейтинг)</h4>
           <div className="space-y-2">
             {stats.problem_questions.slice(0, 3).map((item, index) => (
               <div key={index} className="p-2 bg-red-50 rounded">
@@ -821,13 +983,6 @@ const StatisticsComponent = () => {
           </div>
         </div>
       )}
-
-      <button
-        onClick={loadStatistics}
-        className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-      >
-        Обновить статистику
-      </button>
     </div>
   );
 };
@@ -845,8 +1000,6 @@ const App = () => {
     loadModels();
     loadSettings();
   }, []);
-
-  // Убираем автосохранение - пользователь хочет кнопку мгновенного сохранения
 
   const loadModels = async () => {
     try {
@@ -893,17 +1046,10 @@ const App = () => {
   const handleSaveSettings = async () => {
     const newSettings = { 
       default_model: selectedModel,
-      auto_save: false  // Убираем автосохранение
+      auto_save: false
     };
     setSettings(newSettings);
     await saveSettings(newSettings);
-  };
-
-  const toggleAutoSave = () => {
-    // Эта функция больше не нужна, но оставляем для совместимости
-    const newAutoSave = !settings.auto_save;
-    const newSettings = { ...settings, auto_save: newAutoSave };
-    setSettings(newSettings);
   };
 
   if (loading) {
@@ -923,7 +1069,7 @@ const App = () => {
         <header className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
             <span>🤖</span>
-            AI Секс-бот Панель Управления
+            AI Чат-бот Панель Управления
           </h1>
           <p className="text-lg text-gray-600">
             Профессиональная система управления AI персонажами для чат-ботов
@@ -933,7 +1079,7 @@ const App = () => {
           </div>
         </header>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           {/* Панель настроек */}
           <div className="bg-white p-4 rounded-lg shadow-md mb-6">
             <div className="flex items-center justify-between flex-wrap gap-4">
@@ -983,17 +1129,7 @@ const App = () => {
                     : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                🧪 Тестирование
-              </button>
-              <button
-                onClick={() => setActiveTab('training')}
-                className={`flex-1 py-2 px-4 text-sm font-medium rounded-md ${
-                  activeTab === 'training'
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                🎓 Обучение
+                🧪 Тестирование и Обучение
               </button>
               <button
                 onClick={() => setActiveTab('character')}
@@ -1019,8 +1155,7 @@ const App = () => {
           </div>
 
           {/* Контент табов */}
-          {activeTab === 'test' && <TestComponent selectedModel={selectedModel} />}
-          {activeTab === 'training' && <TrainingComponent selectedModel={selectedModel} />}
+          {activeTab === 'test' && <TestTrainingComponent selectedModel={selectedModel} />}
           {activeTab === 'character' && <CharacterEditor selectedModel={selectedModel} />}
           {activeTab === 'statistics' && <StatisticsComponent />}
         </div>
