@@ -21,5 +21,12 @@
     "confident",
     "flirty",
     "adventurous"
+  ],
+  "triggers": [
+    "give me",
+    "show link",
+    "give link",
+    "show me",
+    "telegram"
   ]
 }
