@@ -1,47 +1,41 @@
-// =============================================================================
-// УНИВЕРСАЛЬНЫЙ JS КОД ДЛЯ ZENNOPOSTER
-// Версия: 2.0
-// Описание: Универсальный бот для чатов с ИИ-поддержкой
-// =============================================================================
-
 (function () {
     try {
         // === КОНФИГУРАЦИЯ ===
         const CONFIG = {
-            chatAuth: "{-Variable.chatAuth-}",      // Токен авторизации чата
-            model: "{-Variable.model-}",            // Модель ИИ (rus_girl_1, eng_girl_1, etc.)
-            server: "wss://noname.chat/socket.io/", // WebSocket сервер (ИЗМЕНИТЬ ПОД СВОЙ ЧАТ)
-            maxDialogs: 80,                         // Максимум диалогов
-            inactivityTimeout: 18000,               // Таймаут неактивности (мс)
-            typingDelay: [1500, 3000],             // Задержка typing (мс)
-            responseDelay: [2000, 4000],           // Задержка ответа (мс)
-            reconnectDelay: 5000,                  // Задержка переподключения (мс)
-            searchTimeout: 20000,                  // Таймаут поиска (мс)
-            firstDialogTimeout: 30000,             // Таймаут первого диалога (мс)
-            localApiUrl: "http://127.0.0.1:8001/api/chat",    // Основной API
-            alternativeApiUrl: "http://192.168.0.49:8001/api/chat" // Альтернативный API
+            chatAuth: "{-Variable.chatAuth-}",
+            model: "{-Variable.model-}",
+            server: "wss://noname.chat/socket.io/",
+            maxDialogs: 20,
+            inactivityTimeout: 15000, // Изменено с 30000 на 15000 (15 секунд)
+            typingDelay: [2000, 6000],
+            responseDelay: [2000, 6000],
+            searchTimeout: 30000,
+            firstDialogTimeout: 30000,
+            localApiUrl: "http://127.0.0.1:8001/api/chat",
+            alternativeApiUrl: "http://192.168.0.49:8001/api/chat",
+            maxRestoreAttempts: 1,
+            reconnectDelay: [10000, 30000],
+            maxReconnectAttempts: 5
         };
 
-        // === ТРИГГЕРЫ ЗАВЕРШЕНИЯ ===
-        // Слова/фразы, при обнаружении которых диалог завершается
-        const END_TRIGGERS = [
-            "http://", "https://", "www.", ".com", ".ru", ".org", ".net",
-            "тг", "телеграм", "telegram", "@", "t.me/", "tg://",
-            "переходи", "ссылка", "жми", "кликай", "перейди", "заходи",
-            "инст", "инста", "instagram", "вк", "вконтакте", "facebook"
+        // === ЧЁРНЫЙ СПИСОК ===
+        const BLACKLIST = [
+            "эй ты", "ты бот", "То самое 18+ Ищи в тг: SNAROGA","спам"
         ];
 
         // === ПРОВЕРКА КОНФИГУРАЦИИ ===
-        if (CONFIG.chatAuth.includes("{-Variable") || CONFIG.model.includes("{-Variable")) {
-            throw new Error("Не заменены переменные ZennoPoster! Установите chatAuth и model.");
+        if (CONFIG.chatAuth.includes("{-Variable") || CONFIG.model.includes("{-Variable") || CONFIG.server.includes("{-Variable")) {
+            throw new Error("Не заменены переменные ZennoPoster! Установите chatAuth, model и server.");
         }
 
         // === СОСТОЯНИЕ БОТА ===
         let log = [];
         let processedPeers = [];
+        let inactivePeers = new Set();
         let currentDialog = {
             active: false,
             peerId: null,
+            chatId: null,
             messageCount: 0,
             startTime: null,
             lastMessageTime: null,
@@ -51,8 +45,14 @@
         let status = "start";
         let dialogCount = 0;
         let successfulDialogs = 0;
-        let ackIdCounter = 422;
+        let ackIdCounter = Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 100000);
         let searchTimeout = null;
+        let sessionId = null;
+        let userConfig = null;
+        let searchLimit = { current: 0, max: 50 };
+        let isTyping = false;
+        let restoreAttempts = {};
+        let reconnectAttempts = 0;
         const threadId = Math.random().toString(36).substr(2, 5);
 
         // === УТИЛИТЫ ===
@@ -60,6 +60,12 @@
             const time = new Date().toLocaleTimeString('ru-RU');
             const line = `[${time}] [${threadId}] ${msg}`;
             log.push(line);
+            
+            if (log.length > 1000) {
+                logAdd(`ℹ️ Лог обрезан до 1000 строк, удалено ${log.length - 1000} записей`);
+                log = log.slice(-1000);
+            }
+            
             window.__zp_log = log.join("\n");
             console.log(line);
         }
@@ -72,15 +78,38 @@
             return Math.floor(Math.random() * (range[1] - range[0] + 1)) + range[0];
         }
 
-        function hasEndTrigger(text) {
+        function hasBlacklistTrigger(text) {
             const cleaned = normalize(text);
-            return END_TRIGGERS.some(trigger => cleaned.includes(trigger));
+            const foundTrigger = BLACKLIST.find(trigger => cleaned.includes(trigger));
+            if (foundTrigger) {
+                logAdd(`str: ${currentDialog.peerId} | 🚫 Обнаружен триггер чёрного списка: ${foundTrigger}`);
+                return true;
+            }
+            return false;
+        }
+
+        function startTyping() {
+            if (ws?.readyState === WebSocket.OPEN && currentDialog.active && !isTyping) {
+                isTyping = true;
+                ws.send(`42${ackIdCounter}["back:start_typing"]`);
+                logAdd(`📝 Начинаем печатать для ${currentDialog.peerId} | ackId: ${ackIdCounter}`);
+                ackIdCounter++;
+            }
+        }
+
+        function stopTyping() {
+            if (ws?.readyState === WebSocket.OPEN && currentDialog.active && isTyping) {
+                isTyping = false;
+                ws.send(`42${ackIdCounter}["back:stop_typing"]`);
+                logAdd(`✋ Прекращаем печатать для ${currentDialog.peerId} | ackId: ${ackIdCounter}`);
+                ackIdCounter++;
+            }
         }
 
         // === ФУНКЦИЯ ЗАПРОСА К ИИ ===
         function getAIResponse(peerId, message) {
             try {
-                logAdd(`str: ${peerId} | Запрос к ИИ (модель: ${CONFIG.model})`);
+                logAdd(`str: ${peerId} | Запрос к ИИ (модель: ${CONFIG.model}, user_id: ${peerId})`);
                 
                 const requestBody = JSON.stringify({
                     model: CONFIG.model,
@@ -92,7 +121,6 @@
                 let apiUrl = CONFIG.localApiUrl;
                 
                 try {
-                    // Основной API
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', apiUrl, false);
                     xhr.setRequestHeader('Content-Type', 'application/json');
@@ -106,7 +134,6 @@
                 } catch (e) {
                     logAdd(`str: ${peerId} | Ошибка основного API: ${e.message}`);
                     
-                    // Альтернативный API
                     apiUrl = CONFIG.alternativeApiUrl;
                     try {
                         const xhr2 = new XMLHttpRequest();
@@ -135,15 +162,12 @@
                     throw new Error("Нет поля 'response' в ответе ИИ");
                 }
 
-                logAdd(`str: ${peerId} | Ответ: ${data.response.substring(0, 50)}...`);
+                logAdd(`str: ${currentDialog.peerId} | Ответ: ${data.response.substring(0, 50)}`);
                 
-                // Проверяем на триггеры завершения
-                if (hasEndTrigger(data.response)) {
-                    logAdd(`str: ${peerId} | 🎯 Обнаружен триггер завершения!`);
-                    return { response: data.response, shouldEnd: true };
-                }
-                
-                return { response: data.response, shouldEnd: false };
+                return { 
+                    response: data.response, 
+                    isLast: data.is_last === true 
+                };
             } catch (e) {
                 logAdd(`str: ${peerId} | ❌ Ошибка ИИ: ${e.message}`);
                 return null;
@@ -159,12 +183,15 @@
                 ws = new WebSocket(url);
                 
                 ws.onopen = () => {
+                    reconnectAttempts = 0;
                     ws.send('40');
-                    logAdd(`✅ WebSocket открыт ${threadId}`);
-                    setTimeout(() => startSearch(), 1000);
+                    logAdd(`✅ WebSocket открыт ${threadId} | Отправлено: 40`);
                 };
                 
-                ws.onmessage = (event) => handleMessage(event.data);
+                ws.onmessage = (event) => {
+                    logAdd(`📨 WebSocket получил: ${event.data.substring(0, 100)}`);
+                    handleMessage(event.data);
+                };
                 
                 ws.onclose = (event) => {
                     logAdd(`🔴 WebSocket закрыт: ${event.code}`);
@@ -184,76 +211,72 @@
 
         function handleDisconnect(code) {
             cleanup();
-            
-            if (code === 1006) {
-                setTimeout(() => window.__zp_restartThread(), CONFIG.reconnectDelay);
-            } else if (code === 1005 && dialogCount === 0) {
-                status = "badproxy";
-                window.__zp_status = status;
-                window.__zp_error = "badproxy";
-                logAdd(`🚫 Остановка: плохой прокси`);
+            status = "stop";
+            window.__zp_status = status;
+            window.__zp_error = `WebSocket закрыт с кодом ${code}`;
+            logAdd(`🛑 Остановка: WebSocket закрыт с кодом ${code}`);
+
+            if (reconnectAttempts < CONFIG.maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = getRandomDelay(CONFIG.reconnectDelay);
+                logAdd(`🔄 Попытка переподключения ${reconnectAttempts}/${CONFIG.maxReconnectAttempts} через ${delay}мс`);
+                setTimeout(connect, delay);
             } else {
-                status = "stop";
-                window.__zp_status = status;
-                logAdd(`🛑 Остановка: нет диалогов`);
-            }
-            
-            if (dialogCount < CONFIG.maxDialogs && status !== "badproxy") {
-                setTimeout(reconnect, CONFIG.reconnectDelay);
+                logAdd(`🚫 Превышен лимит попыток переподключения (${CONFIG.maxReconnectAttempts})`);
             }
         }
 
         function cleanup() {
             if (searchTimeout) clearTimeout(searchTimeout);
             if (currentDialog.inactivityTimer) clearTimeout(currentDialog.inactivityTimer);
-        }
-
-        function reconnect() {
-            if (status !== "stop" && status !== "badproxy" && dialogCount < CONFIG.maxDialogs) {
-                logAdd(`🔄 Переподключение ${threadId}`);
-                connect();
-            }
-        }
-
-        function startSearch() {
-            if (ws?.readyState === WebSocket.OPEN && dialogCount < CONFIG.maxDialogs) {
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: эта команда может отличаться!
-                ws.send(`42${ackIdCounter}["back:start_search",null]`);
-                logAdd(`🔍 Поиск начат ${threadId}`);
-                ackIdCounter++;
-                
-                status = "start";
-                window.__zp_status = status;
-                
-                if (searchTimeout) clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    status = dialogCount === 0 ? "badproxy" : "stop";
-                    window.__zp_status = status;
-                    logAdd(`⏰ Таймаут поиска`);
-                    if (ws?.readyState === WebSocket.OPEN) ws.close();
-                }, dialogCount === 0 ? CONFIG.firstDialogTimeout : CONFIG.searchTimeout);
-            }
+            isTyping = false;
+            currentDialog.active = false;
         }
 
         function sendMessage(text) {
             if (ws?.readyState === WebSocket.OPEN && currentDialog.active) {
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: формат сообщения может отличаться!
                 const message = JSON.stringify(["back:send_message", {
                     text, 
                     isImage: false, 
                     peerOffline: false
                 }]);
                 ws.send(`42${ackIdCounter}${message}`);
-                logAdd(`📤 we: ${text.substring(0, 30)}... -> ${currentDialog.peerId}`);
+                logAdd(`📤 we: ${text.substring(0, 30)} -> ${currentDialog.peerId} | ackId: ${ackIdCounter}`);
                 ackIdCounter++;
+            } else {
+                logAdd(`🚫 Не отправлено сообщение: WebSocket закрыт или диалог неактивен`);
+            }
+        }
+
+        function startSearch() {
+            if (ws?.readyState === WebSocket.OPEN) {
+                ws.send(`42${ackIdCounter}["back:start_search",null]`);
+                logAdd(`🔍 Начинаем поиск собеседника | ackId: ${ackIdCounter}`);
+                ackIdCounter++;
+                searchTimeout = setTimeout(() => {
+                    if (!currentDialog.active) {
+                        logAdd(`⏳ Таймаут поиска истек`);
+                        endDialog("таймаут поиска");
+                    }
+                }, CONFIG.searchTimeout);
             }
         }
 
         function endDialog(reason = "") {
-            if (!currentDialog.active) return;
+            if (!currentDialog.active) {
+                if (dialogCount < CONFIG.maxDialogs && ws?.readyState === WebSocket.OPEN) {
+                    setTimeout(() => {
+                        logAdd(`⏳ Ожидание нового диалога ${threadId}`);
+                        ws.send(`42${ackIdCounter}["back:init"]`);
+                        logAdd(`📤 Реинициализация: back:init | ackId: ${ackIdCounter}`);
+                        ackIdCounter++;
+                    }, getRandomDelay([4000, 12000]));
+                }
+                return;
+            }
             
             const duration = Date.now() - currentDialog.startTime;
-            const isSuccessful = reason.includes("триггер завершения");
+            const isSuccessful = reason.includes("финальное сообщение");
             
             logAdd(`🏁 Диалог завершен ${currentDialog.peerId} | ${reason} | ${Math.round(duration/1000)}с | Успешный: ${isSuccessful}`);
             
@@ -262,25 +285,37 @@
                 logAdd(`🎉 Успешных диалогов: ${successfulDialogs}`);
             }
             
+            stopTyping();
             currentDialog.active = false;
             dialogCount++;
             
             if (ws?.readyState === WebSocket.OPEN) {
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: команда остановки диалога может отличаться!
                 ws.send(`42${ackIdCounter}["back:stop_dialog"]`);
+                logAdd(`📤 Отправлено: back:stop_dialog | ackId: ${ackIdCounter}`);
                 ackIdCounter++;
             }
             
             cleanup();
             
-            // Сброс состояния
             currentDialog = {
-                active: false, peerId: null, messageCount: 0,
-                startTime: null, lastMessageTime: null, inactivityTimer: null
+                active: false,
+                peerId: null,
+                chatId: null,
+                messageCount: 0,
+                startTime: null,
+                lastMessageTime: null,
+                inactivityTimer: null
             };
             
             if (dialogCount < CONFIG.maxDialogs) {
-                setTimeout(startSearch, getRandomDelay([2000, 4000]));
+                setTimeout(() => {
+                    logAdd(`⏳ Ожидание нового диалога ${threadId}`);
+                    if (ws?.readyState === WebSocket.OPEN) {
+                        ws.send(`42${ackIdCounter}["back:init"]`);
+                        logAdd(`📤 Реинициализация: back:init | ackId: ${ackIdCounter}`);
+                        ackIdCounter++;
+                    }
+                }, getRandomDelay([4000, 12000]));
             } else {
                 logAdd(`🎯 Завершение работы: ${dialogCount} диалогов, ${successfulDialogs} успешных`);
                 status = "stop";
@@ -291,10 +326,74 @@
 
         // === ОБРАБОТКА СООБЩЕНИЙ ===
         function handleMessage(data) {
-            if (data === '40' || data.startsWith('0')) return;
-            if (data === '2') return ws.send('3');
+            if (ws?.readyState !== WebSocket.OPEN) {
+                logAdd(`🚫 Игнорируем сообщение: WebSocket закрыт (readyState: ${ws?.readyState})`);
+                return;
+            }
 
-            if (data.startsWith('42')) {
+            if (data === '40') {
+                ws.send(`42${ackIdCounter}["back:init"]`);
+                logAdd(`📤 Отправлено: back:init | ackId: ${ackIdCounter}`);
+                ackIdCounter++;
+                return;
+            }
+            
+            if (data.startsWith('40{')) {
+                try {
+                    const sessionData = JSON.parse(data.slice(2));
+                    if (sessionData.sid) {
+                        sessionId = sessionData.sid;
+                        logAdd(`🔐 Получен session ID: ${sessionData.sid}`);
+                        
+                        ws.send(`42${ackIdCounter}["back:init"]`);
+                        logAdd(`📤 Отправлено: back:init после session ID | ackId: ${ackIdCounter}`);
+                        ackIdCounter++;
+                    }
+                } catch (e) {
+                    logAdd(`❌ Ошибка парсинга session ID: ${e.message}`);
+                }
+                return;
+            }
+            
+            if (data === '2') {
+                ws.send('3');
+                logAdd(`💓 Ping-pong: получен 2, отправлен 3`);
+                return;
+            }
+
+            if (data === '41' || data.startsWith('44')) {
+                logAdd(`🚨 Получен сигнал завершения сессии: ${data}`);
+                if (data.includes('need refresh')) {
+                    logAdd(`🚫 Обнаружен need refresh, возможно пересечение IP прокси. Останавливаем скрипт.`);
+                    status = "stop";
+                    window.__zp_status = status;
+                    window.__zp_error = "Остановка из-за need refresh (возможное пересечение IP прокси)";
+                    cleanup();
+                    if (ws?.readyState === WebSocket.OPEN) {
+                        ws.close();
+                        logAdd(`🔴 WebSocket закрыт из-за need refresh`);
+                    }
+                    return;
+                }
+                if (ws?.readyState === WebSocket.OPEN) {
+                    logAdd(`🔄 Пробуем реинициализацию без разрыва`);
+                    ws.send(`42${ackIdCounter}["back:init"]`);
+                    logAdd(`📤 Отправлено: back:init | ackId: ${ackIdCounter}`);
+                    ackIdCounter++;
+                    setTimeout(() => {
+                        if (ws?.readyState !== WebSocket.OPEN) {
+                            logAdd(`🔴 Соединение закрыто, инициируем переподключение`);
+                            handleDisconnect(1005);
+                        }
+                    }, getRandomDelay([6000, 9000]));
+                } else {
+                    logAdd(`🔴 WebSocket закрыт, инициируем переподключение`);
+                    handleDisconnect(1005);
+                }
+                return;
+            }
+
+            if (data.startsWith('42') || data.startsWith('43')) {
                 try {
                     let eventJson = data.slice(2);
                     let ackId = null;
@@ -306,22 +405,65 @@
                     }
                     
                     const eventData = JSON.parse(eventJson);
-                    handleEvent(eventData, ackId);
+                    handleEvent(eventData, ackId, data.startsWith('43'));
                 } catch (e) {
-                    logAdd(`❌ Ошибка парсинга: ${e.message}`);
+                    logAdd(`❌ Ошибка парсинга: ${e.message} | Data: ${data.substring(0, 100)}`);
                 }
             }
         }
 
-        function handleEvent([eventName, ...args], ackId = null) {
+        function handleEvent(eventData, ackId = null, isAckResponse = false) {
+            if (ws?.readyState !== WebSocket.OPEN) {
+                logAdd(`🚫 Игнорируем событие ${JSON.stringify(eventData)}: WebSocket закрыт`);
+                return;
+            }
+
+            if (isAckResponse) {
+                logAdd(`✅ Получен ack: ${ackId} | EventData: ${JSON.stringify(eventData).substring(0, 100)}`);
+                
+                if (eventData && eventData[0] && typeof eventData[0] === 'object' && eventData[0].userSex !== undefined) {
+                    userConfig = eventData[0];
+                    logAdd(`⚙️ Конфигурация пользователя: ${JSON.stringify(userConfig)}`);
+                    
+                    if (userConfig.needRestoreDialog) {
+                        ws.send(`42${ackIdCounter}["back:restore_dialog_with_messages"]`);
+                        logAdd(`📤 Отправлено: back:restore_dialog_with_messages | ackId: ${ackIdCounter}`);
+                        ackIdCounter++;
+                    } else {
+                        setTimeout(() => {
+                            startSearch();
+                        }, getRandomDelay([2000, 3000]));
+                    }
+                } else if (eventData && eventData[0] === "no_peer") {
+                    logAdd(`🔍 Нет доступных собеседников, начинаем новый поиск`);
+                    setTimeout(() => {
+                        startSearch();
+                    }, getRandomDelay([2000, 3000]));
+                }
+                return;
+            }
+
+            const [eventName, ...args] = eventData;
+
             switch (eventName) {
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: названия событий могут отличаться!
                 case 'front:start_dialog':
                     const userData = args[0];
                     const peerId = userData?.nickname || 'Unknown';
                     
                     if (processedPeers.includes(peerId)) {
-                        logAdd(`🔄 str: ${peerId} | Повторный собеседник`);
+                        restoreAttempts[peerId] = (restoreAttempts[peerId] || 0) + 1;
+                        logAdd(`🔄 str: ${peerId} | Повторный собеседник | Попытка: ${restoreAttempts[peerId]}`);
+                        
+                        if (restoreAttempts[peerId] >= CONFIG.maxRestoreAttempts) {
+                            logAdd(`🚫 str: ${peerId} | Превышен лимит попыток восстановления (${CONFIG.maxRestoreAttempts})`);
+                            inactivePeers.add(peerId);
+                            ws.send(`42${ackIdCounter}["back:stop_dialog"]`);
+                            logAdd(`📤 Отправлено: back:stop_dialog для ${peerId} | ackId: ${ackIdCounter}`);
+                            ackIdCounter++;
+                            setTimeout(() => startSearch(), getRandomDelay([2000, 3000]));
+                            return;
+                        }
+                        
                         endDialog("повторный собеседник");
                         return;
                     }
@@ -334,111 +476,181 @@
                     currentDialog = {
                         active: true,
                         peerId: peerId,
+                        chatId: `chat_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
                         messageCount: 0,
                         startTime: Date.now(),
                         lastMessageTime: Date.now(),
                         inactivityTimer: null
                     };
                     
-                    logAdd(`🎬 str: ${peerId} | Диалог начат`);
+                    logAdd(`🎬 str: ${peerId} | Диалог начат | UserData: ${JSON.stringify(userData)}`);
                     status = "start";
                     window.__zp_status = status;
                     
                     if (searchTimeout) clearTimeout(searchTimeout);
                     
+                    // Устанавливаем таймер на 15 секунд - если нет сообщений, переключаемся
                     currentDialog.inactivityTimer = setTimeout(() => {
                         if (currentDialog.active) {
-                            endDialog("собеседник неактивен");
+                            endDialog("нет сообщений в течение 15 секунд");
                         }
                     }, CONFIG.inactivityTimeout);
                     
                     if (ws?.readyState === WebSocket.OPEN) {
-                        // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: команда остановки поиска может отличаться!
                         ws.send(`42${ackIdCounter}["back:stop_search",true]`);
+                        logAdd(`📤 Отправлено: back:stop_search | ackId: ${ackIdCounter}`);
                         ackIdCounter++;
                     }
                     break;
 
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: название события может отличаться!
                 case 'front:send_message':
                     if (!currentDialog.active) return;
                     
                     const messageData = args[0];
+                    
                     if (ackId && ws?.readyState === WebSocket.OPEN) {
                         ws.send(`43${ackId}[true]`);
+                        logAdd(`📤 Отправлен ack: ${ackId}`);
+                    }
+                    
+                    if (messageData?.system && messageData?.id === "remove_after_message") {
+                        logAdd(`📩 str: ${currentDialog.peerId} | Получено системное сообщение: ${messageData.text}`);
+                        startTyping();
+                        setTimeout(() => {
+                            if (currentDialog.active && ws?.readyState === WebSocket.OPEN) {
+                                stopTyping();
+                                sendMessage("Привет");
+                                setTimeout(() => {
+                                    endDialog("системное сообщение о завершении диалога");
+                                }, getRandomDelay([2000, 3000]));
+                            }
+                        }, getRandomDelay(CONFIG.typingDelay));
+                        return;
                     }
                     
                     if (messageData?.system || messageData?.isImage) return;
                     const text = messageData?.text;
                     if (!text) return;
 
-                    logAdd(`📥 str: ${currentDialog.peerId} | ${text.substring(0, 50)}...`);
+                    logAdd(`📥 str: ${currentDialog.peerId} | ${text.substring(0, 50)}`);
+
+                    // Проверка на чёрный список
+                    if (hasBlacklistTrigger(text)) {
+                        setTimeout(() => {
+                            endDialog("триггер чёрного списка в сообщении собеседника");
+                        }, getRandomDelay([2000, 3000]));
+                        return;
+                    }
 
                     currentDialog.messageCount++;
                     currentDialog.lastMessageTime = Date.now();
                     
-                    // Сброс таймера неактивности
+                    // Обновляем таймер при получении сообщения
                     if (currentDialog.inactivityTimer) clearTimeout(currentDialog.inactivityTimer);
                     currentDialog.inactivityTimer = setTimeout(() => {
                         if (currentDialog.active) {
-                            endDialog("собеседник неактивен");
+                            endDialog("нет сообщений в течение 15 секунд");
                         }
                     }, CONFIG.inactivityTimeout);
 
-                    // Получаем ответ от ИИ
                     const aiResult = getAIResponse(currentDialog.peerId, text);
                     
                     if (aiResult && aiResult.response) {
                         const typingDelay = getRandomDelay(CONFIG.typingDelay);
                         const responseDelay = getRandomDelay(CONFIG.responseDelay);
                         
+                        startTyping();
+                        
                         setTimeout(() => {
                             if (currentDialog.active && ws?.readyState === WebSocket.OPEN) {
-                                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: команда typing может отличаться!
-                                ws.send(`42${ackIdCounter}["back:start_typing"]`);
-                                ackIdCounter++;
+                                stopTyping();
+                                sendMessage(aiResult.response);
                                 
-                                setTimeout(() => {
-                                    if (currentDialog.active) {
-                                        sendMessage(aiResult.response);
-                                        
-                                        // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: команда остановки typing может отличаться!
-                                        ws.send(`42${ackIdCounter}["back:stop_typing"]`);
-                                        ackIdCounter++;
-                                        
-                                        // Проверяем на завершение
-                                        if (aiResult.shouldEnd) {
-                                            setTimeout(() => {
-                                                endDialog("триггер завершения в ответе ИИ");
-                                            }, 2000);
-                                        }
-                                    }
-                                }, responseDelay);
+                                if (aiResult.isLast) {
+                                    logAdd(`🏁 str: ${currentDialog.peerId} | Получен флаг is_last: true, завершаем диалог через 20-30 секунд`);
+                                    setTimeout(() => {
+                                        endDialog("финальное сообщение от ИИ (is_last: true)");
+                                    }, getRandomDelay([20000, 30000]));
+                                }
                             }
-                        }, typingDelay);
+                        }, responseDelay);
                     } else {
                         logAdd(`❌ str: ${currentDialog.peerId} | Нет ответа от ИИ`);
                     }
                     break;
 
-                // ИЗМЕНИТЬ ПОД СВОЙ ЧАТ: названия событий могут отличаться!
                 case 'front:stop_dialog':
                     if (currentDialog.active) {
-                        endDialog("собеседник вышел");
+                        const reason = args[0] || "неизвестная причина";
+                        endDialog(`собеседник завершил чат: ${reason}`);
                     }
                     break;
 
-                case 'front:peer_is_offline':
-                case 'front:peer_is_inactive':
+                case 'front:peer_is_online':
                     if (currentDialog.active) {
-                        endDialog("собеседник неактивен");
+                        logAdd(`🟢 str: ${currentDialog.peerId} | Собеседник онлайн`);
                     }
+                    break;
+
+                case 'front:show_peer_typing':
+                    if (currentDialog.active) {
+                        logAdd(`⌨️ str: ${currentDialog.peerId} | Собеседник печатает`);
+                    }
+                    break;
+
+                case 'front:hide_peer_typing':
+                    if (currentDialog.active) {
+                        logAdd(`✋ str: ${currentDialog.peerId} | Собеседник прекратил печатать`);
+                    }
+                    break;
+
+                case 'front:update_search_limit':
+                    const limitData = args[0];
+                    if (limitData) {
+                        searchLimit = limitData;
+                        logAdd(`📊 Лимит поиска обновлен: ${limitData.current}/${limitData.max}`);
+                        
+                        if (limitData.current >= limitData.max) {
+                            logAdd(`🚫 Достигнут лимит поиска!`);
+                            status = "stop";
+                            window.__zp_status = status;
+                            if (ws?.readyState === WebSocket.OPEN) ws.close();
+                        }
+                    }
+                    break;
+
+                case 'front:stop_search':
+                    logAdd(`🛑 Поиск остановлен`);
+                    break;
+
+                case 'front:refresh_page':
+                    logAdd(`🚨 Получен front:refresh_page, проверяем состояние`);
+                    if (ws?.readyState === WebSocket.OPEN) {
+                        logAdd(`🔄 Пробуем реинициализацию без разрыва`);
+                        ws.send(`42${ackIdCounter}["back:init"]`);
+                        logAdd(`📤 Отправлено: back:init | ackId: ${ackIdCounter}`);
+                        ackIdCounter++;
+                        setTimeout(() => {
+                            if (ws?.readyState !== WebSocket.OPEN) {
+                                logAdd(`🔴 Соединение закрыто, инициируем переподключение`);
+                                handleDisconnect(1005);
+                            }
+                        }, getRandomDelay([6000, 9000]));
+                    } else {
+                        logAdd(`🔴 WebSocket закрыт, инициируем переподключение`);
+                        handleDisconnect(1005);
+                    }
+                    break;
+
+                default:
+                    logAdd(`❓ Неизвестное событие: ${eventName} | Args: ${JSON.stringify(args).substring(0, 100)}`);
                     break;
             }
         }
 
         // === ЗАПУСК БОТА ===
-        logAdd(`🚀 Запуск бота ${threadId} | Модель: ${CONFIG.model}`);
+        logAdd(`🚀 Запуск адаптированного бота ${threadId} | Модель: ${CONFIG.model}`);
+        logAdd(`🔢 Начальный ackIdCounter: ${ackIdCounter}`);
         status = "start";
         window.__zp_status = status;
         connect();
@@ -451,36 +663,3 @@
         window.__zp_error = e.message;
     }
 })();
-
-// =============================================================================
-// ИНСТРУКЦИЯ ПО АДАПТАЦИИ ПОД НОВЫЙ ЧАТ:
-// =============================================================================
-// 
-// 1. Измените CONFIG.server на адрес вашего WebSocket сервера
-// 
-// 2. Найдите и измените следующие команды WebSocket:
-//    - "back:start_search" -> команда начала поиска в вашем чате
-//    - "back:stop_search" -> команда остановки поиска
-//    - "back:send_message" -> команда отправки сообщения
-//    - "back:stop_dialog" -> команда завершения диалога
-//    - "back:start_typing" -> команда начала набора текста
-//    - "back:stop_typing" -> команда остановки набора текста
-// 
-// 3. Найдите и измените следующие события:
-//    - "front:start_dialog" -> событие начала диалога
-//    - "front:send_message" -> событие получения сообщения
-//    - "front:stop_dialog" -> событие завершения диалога
-//    - "front:peer_is_offline" -> событие офлайн собеседника
-//    - "front:peer_is_inactive" -> событие неактивности собеседника
-// 
-// 4. Проверьте структуру объектов userData и messageData
-// 
-// 5. Настройте переменные ZennoPoster:
-//    - {-Variable.chatAuth-} = "ваш_токен_авторизации"
-//    - {-Variable.model-} = "rus_girl_1" (или другая модель)
-// 
-// 6. При необходимости добавьте дополнительные триггеры в END_TRIGGERS
-// 
-// 7. Протестируйте на одном потоке перед массовым запуском
-// 
-// =============================================================================
