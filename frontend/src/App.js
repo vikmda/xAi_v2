@@ -717,17 +717,24 @@ const CharacterEditor = ({ selectedModel }) => {
 };
 // Компонент настроек чат-платформ - УДАЛЕН по запросу пользователя
 
-const StatisticsComponent = () => {
+const StatisticsComponent = ({ selectedModel, models }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('general'); // 'general' or 'model'
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     loadStatistics();
-  }, []);
+  }, [selectedModel, viewMode]);
 
   const loadStatistics = async () => {
     try {
-      const response = await axios.get(`${API}/statistics`);
+      let response;
+      if (viewMode === 'model' && selectedModel) {
+        response = await axios.get(`${API}/statistics/${selectedModel}`);
+      } else {
+        response = await axios.get(`${API}/statistics`);
+      }
       setStats(response.data);
     } catch (error) {
       console.error('Ошибка загрузки статистики:', error);
@@ -736,104 +743,225 @@ const StatisticsComponent = () => {
     }
   };
 
+  const clearModelStatistics = async () => {
+    if (!selectedModel) return;
+    
+    const confirmClear = window.confirm(
+      `⚠️ Вы уверены, что хотите очистить всю статистику модели "${selectedModel}"?\n\n` +
+      `Будут удалены:\n` +
+      `• Все диалоги\n` +
+      `• Все рейтинги\n` +
+      `• Активность бота\n\n` +
+      `ОБУЧЕННЫЕ ОТВЕТЫ БУДУТ СОХРАНЕНЫ!`
+    );
+    
+    if (!confirmClear) return;
+    
+    setClearing(true);
+    try {
+      const response = await axios.delete(`${API}/statistics/${selectedModel}`);
+      alert('✅ Статистика модели очищена успешно!\n\n' + 
+            `Удалено:\n` +
+            `• Диалоги: ${response.data.deleted.conversations}\n` +
+            `• Рейтинги: ${response.data.deleted.ratings}\n` +
+            `• Активности: ${response.data.deleted.activities}\n\n` +
+            `Обученные ответы сохранены ✓`);
+      await loadStatistics(); // Перезагружаем статистику
+    } catch (error) {
+      console.error('Ошибка очистки статистики:', error);
+      alert('❌ Ошибка при очистке статистики');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   if (loading) return <div>Загрузка статистики...</div>;
   if (!stats) return <div>Ошибка загрузки статистики</div>;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h3 className="text-lg font-semibold mb-4">Статистика системы</h3>
-      
-      {/* Общая статистика */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h4 className="font-medium text-blue-900">Всего диалогов</h4>
-          <p className="text-2xl font-bold text-blue-600">{stats.total_conversations}</p>
-        </div>
-        <div className="bg-green-50 p-4 rounded-lg">
-          <h4 className="font-medium text-green-900">Всего пользователей</h4>
-          <p className="text-2xl font-bold text-green-600">{stats.total_users}</p>
-        </div>
-        <div className="bg-purple-50 p-4 rounded-lg">
-          <h4 className="font-medium text-purple-900">Активных моделей</h4>
-          <p className="text-2xl font-bold text-purple-600">{stats.system_status.models_loaded}</p>
-        </div>
-      </div>
-
-      {/* Статус системы */}
-      <div className="mb-6">
-        <h4 className="font-medium mb-2">Статус системы</h4>
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-semibold">📊 Статистика</h3>
+        
+        {/* Переключатель режима просмотра */}
         <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 ${stats.system_status.database_connected ? 'text-green-600' : 'text-red-600'}`}>
-            <div className={`w-3 h-3 rounded-full ${stats.system_status.database_connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            База данных
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Режим просмотра:</label>
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value)}
+              className="p-2 border border-gray-300 rounded-md text-sm"
+            >
+              <option value="general">📈 Общая статистика</option>
+              <option value="model">🎯 По модели</option>
+            </select>
           </div>
-          <div className="text-blue-600">
-            Активных диалогов: {stats.system_status.active_conversations}
-          </div>
+          
+          {/* Кнопка очистки статистики модели */}
+          {viewMode === 'model' && selectedModel && (
+            <button
+              onClick={clearModelStatistics}
+              disabled={clearing}
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md font-medium disabled:bg-gray-400 transition-colors flex items-center gap-2"
+            >
+              {clearing ? '🔄 Очистка...' : '🗑️ Очистить статистику модели'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Статистика по моделям */}
-      {stats.models_stats && stats.models_stats.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Статистика по моделям</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left">Модель</th>
-                  <th className="px-4 py-2 text-left">Диалоги</th>
-                  <th className="px-4 py-2 text-left">Средний рейтинг</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.models_stats.map((model, index) => (
-                  <tr key={index} className="border-t">
-                    <td className="px-4 py-2">{model._id}</td>
-                    <td className="px-4 py-2">{model.conversations}</td>
-                    <td className="px-4 py-2">{model.avg_rating ? model.avg_rating.toFixed(1) : 'N/A'}</td>
-                  </tr>
+      {/* Выбор модели для просмотра статистики */}
+      {viewMode === 'model' && (
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <label className="block text-sm font-medium text-blue-800 mb-2">
+            🎯 Выберите модель для просмотра статистики:
+          </label>
+          <select
+            value={selectedModel || ''}
+            onChange={(e) => window.parent.setSelectedModel ? window.parent.setSelectedModel(e.target.value) : null}
+            className="w-full p-2 border border-blue-300 rounded-md focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Выберите модель...</option>
+            {models && models.map((model) => (
+              <option key={model.name} value={model.name}>
+                {model.display_name} ({model.language === 'ru' ? '🇷🇺' : '🇺🇸'}) - {model.country}
+              </option>
+            ))}
+          </select>
+          {!selectedModel && (
+            <div className="mt-2 text-sm text-blue-600">
+              ⚠️ Выберите модель для просмотра детальной статистики
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Статистика по модели */}
+      {viewMode === 'model' && selectedModel && stats.model && (
+        <>
+          {/* Информация о модели */}
+          <div className="mb-6 p-4 bg-green-50 rounded-lg">
+            <h4 className="font-medium text-green-800 mb-2">
+              📋 Статистика модели: {selectedModel}
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-600">{stats.total_conversations}</p>
+                <p className="text-sm text-green-700">Диалогов</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-blue-600">{stats.total_users}</p>
+                <p className="text-sm text-blue-700">Пользователей</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{stats.avg_rating.toFixed(1)}</p>
+                <p className="text-sm text-purple-700">Ср. рейтинг</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-orange-600">{stats.trained_responses}</p>
+                <p className="text-sm text-orange-700">Обученных ответов</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Популярные ответы модели */}
+          {stats.top_responses && stats.top_responses.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-medium mb-2">🔥 Популярные ответы модели</h4>
+              <div className="space-y-2">
+                {stats.top_responses.slice(0, 5).map((response, index) => (
+                  <div key={index} className="flex justify-between items-center p-2 bg-green-50 rounded">
+                    <span className="text-sm truncate">{response._id}</span>
+                    <span className="text-sm font-medium text-green-600">{response.count}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Топ ответов */}
-      {stats.top_responses && stats.top_responses.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Популярные ответы</h4>
-          <div className="space-y-2">
-            {stats.top_responses.slice(0, 5).map((response, index) => (
-              <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-sm truncate">{response._id}</span>
-                <span className="text-sm font-medium">{response.count}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {/* Популярные вопросы */}
-      {stats.top_questions && stats.top_questions.length > 0 && (
-        <div className="mb-6">
-          <h4 className="font-medium mb-2">Популярные вопросы</h4>
-          <div className="space-y-2">
-            {stats.top_questions.slice(0, 5).map((question, index) => (
-              <div key={index} className="flex justify-between items-center p-2 bg-green-50 rounded">
-                <span className="text-sm truncate">{question._id}</span>
-                <span className="text-sm font-medium text-green-600">{question.count}</span>
+          {/* Популярные вопросы модели */}
+          {stats.top_questions && stats.top_questions.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-medium mb-2">❓ Популярные вопросы к модели</h4>
+              <div className="space-y-2">
+                {stats.top_questions.slice(0, 5).map((question, index) => (
+                  <div key={index} className="flex justify-between items-center p-2 bg-blue-50 rounded">
+                    <span className="text-sm truncate">{question._id}</span>
+                    <span className="text-sm font-medium text-blue-600">{question.count}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Проблемные вопросы */}
+      {/* Общая статистика */}
+      {viewMode === 'general' && (
+        <>
+          {/* Общая статистика */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900">Всего диалогов</h4>
+              <p className="text-2xl font-bold text-blue-600">{stats.total_conversations}</p>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h4 className="font-medium text-green-900">Всего пользователей</h4>
+              <p className="text-2xl font-bold text-green-600">{stats.total_users}</p>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-900">Активных моделей</h4>
+              <p className="text-2xl font-bold text-purple-600">{stats.system_status.models_loaded}</p>
+            </div>
+          </div>
+
+          {/* Статус системы */}
+          <div className="mb-6">
+            <h4 className="font-medium mb-2">🔧 Статус системы</h4>
+            <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-2 ${stats.system_status.database_connected ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`w-3 h-3 rounded-full ${stats.system_status.database_connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                База данных
+              </div>
+              <div className="text-blue-600">
+                Активных диалогов: {stats.system_status.active_conversations}
+              </div>
+            </div>
+          </div>
+
+          {/* Статистика по моделям */}
+          {stats.models_stats && stats.models_stats.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-medium mb-2">📊 Статистика по моделям</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Модель</th>
+                      <th className="px-4 py-2 text-left">Диалоги</th>
+                      <th className="px-4 py-2 text-left">Средний рейтинг</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.models_stats.map((model, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="px-4 py-2">{model._id}</td>
+                        <td className="px-4 py-2">{model.conversations}</td>
+                        <td className="px-4 py-2">{model.avg_rating ? model.avg_rating.toFixed(1) : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Проблемные вопросы (общие или по модели) */}
       {stats.problem_questions && stats.problem_questions.length > 0 && (
-        <div>
-          <h4 className="font-medium mb-2">Проблемные вопросы (низкий рейтинг)</h4>
+        <div className="mb-6">
+          <h4 className="font-medium mb-2">⚠️ Проблемные вопросы (низкий рейтинг)</h4>
           <div className="space-y-2">
             {stats.problem_questions.slice(0, 3).map((item, index) => (
               <div key={index} className="p-2 bg-red-50 rounded">
@@ -844,7 +972,7 @@ const StatisticsComponent = () => {
                   <strong>Ответ:</strong> {item.response}
                 </div>
                 <div className="text-sm text-red-500">
-                  Рейтинг: {item.rating}/10 | Модель: {item.model}
+                  Рейтинг: {item.rating}/10 {stats.model ? '' : `| Модель: ${item.model}`}
                 </div>
               </div>
             ))}
@@ -852,12 +980,20 @@ const StatisticsComponent = () => {
         </div>
       )}
 
-      <button
-        onClick={loadStatistics}
-        className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-      >
-        Обновить статистику
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={loadStatistics}
+          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+        >
+          🔄 Обновить статистику
+        </button>
+        
+        {viewMode === 'model' && selectedModel && (
+          <div className="text-sm text-gray-600 flex items-center">
+            💡 Очистка статистики удалит все диалоги и рейтинги, но сохранит обученные ответы
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -953,13 +1089,11 @@ const App = () => {
         <header className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-2">
             <span>🤖</span>
-            AI Секс-бот Панель Управления
+            
           </h1>
           <p className="text-lg text-gray-600">
-            Профессиональная система управления AI персонажами для чат-ботов
           </p>
           <div className="mt-2 text-sm text-gray-500">
-            Настройка, обучение и тестирование умных персонажей
           </div>
         </header>
 
@@ -1052,7 +1186,7 @@ const App = () => {
           {activeTab === 'test' && <TestComponent selectedModel={selectedModel} />}
           {activeTab === 'training' && <TrainingComponent selectedModel={selectedModel} />}
           {activeTab === 'character' && <CharacterEditor selectedModel={selectedModel} />}
-          {activeTab === 'statistics' && <StatisticsComponent />}
+          {activeTab === 'statistics' && <StatisticsComponent selectedModel={selectedModel} models={models} />}
         </div>
       </div>
     </div>

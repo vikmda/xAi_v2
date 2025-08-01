@@ -13,7 +13,7 @@
   "mood": "Флирт",
   "message_count": 5,
   "semi_message": "{пошалим?|шалим?|Пошалим?)}",
-  "final_message": "{давай в тг|го в телеграм|в телеграм|в tg|мой telegram} {kotenikaya|@kotenikaya|'kateam99'|\"kateam99\"} ",
+  "final_message": "{давай в тг|го в телеграм|в телеграм|в tg|мой telegram} {kotyiam|@kotyiam|'kotyiam'|\"kotyiam\"} ",
   "learning_enabled": true,
   "response_length": 15,
   "use_emoji": false,
